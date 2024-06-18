@@ -1,9 +1,12 @@
 import tkinter as tk
+from tkinter import ttk
 from tkinter import filedialog
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import csv
 import numpy as np
+import os
 
 class App:
     def __init__(self, root):
@@ -11,6 +14,8 @@ class App:
         self.root.title("Tkinter and Matplotlib Example")
 
         self.curves = 0
+        self.file_name = ''
+        self.row_count = 0
 
         # Create a left frame for buttons and spinboxes
         self.left_frame = tk.Frame(root)
@@ -25,7 +30,7 @@ class App:
         self.spinbox1_label.grid(row=1, column=0, pady=5, padx=5)
         
         self.spinbox1_var = tk.StringVar()
-        self.spinbox1 = tk.Spinbox(self.left_frame, from_=0, to=100, textvariable=self.spinbox1_var, command=self.spinbox_changed)
+        self.spinbox1 = tk.Spinbox(self.left_frame, from_=0, to=1000, textvariable=self.spinbox1_var, command=self.spinbox_changed)
         self.spinbox1.grid(row=2, column=0, pady=5, padx=5)
         self.spinbox1_var.trace_add("write", lambda *args: self.spinbox_changed())
 
@@ -33,7 +38,7 @@ class App:
         self.spinbox2_label.grid(row=3, column=0, pady=5, padx=5)
         
         self.spinbox2_var = tk.StringVar()
-        self.spinbox2 = tk.Spinbox(self.left_frame, from_=0, to=100, textvariable=self.spinbox2_var, command=self.spinbox_changed)
+        self.spinbox2 = tk.Spinbox(self.left_frame, from_=0, to=1000, textvariable=self.spinbox2_var, command=self.spinbox_changed)
         self.spinbox2.grid(row=4, column=0, pady=5, padx=5)
         self.spinbox2_var.trace_add("write", lambda *args: self.spinbox_changed())
 
@@ -85,19 +90,20 @@ class App:
         if file_path:
             print(f"File selected: {file_path}")
             # You can add code here to handle the selected file
+        self.file_name = os.path.basename(file_path)
 
         mode = 'Rest'
         with open(file_path, 'r') as file:
             # Create a CSV reader object
             csv_reader = csv.reader(file, delimiter=',')
-            row_count = sum(1 for row in csv_reader)
-            data = np.zeros((3, row_count-1))
+            self.row_count = sum(1 for row in csv_reader)
+            data = np.zeros((3, self.row_count-1))
             i = 0
             file.seek(0)
             # Iterate over each row in the CSV file
             for row in csv_reader:
                 # Each row is a list of values corresponding to the columns
-                if i != 0: # i !=0
+                if i != 0:
                     data[0, i-1] = int(row[0])
                     data[1, i-1] = float(row[9] + '.' + row[10])
                     if mode != row[4]:
@@ -105,18 +111,39 @@ class App:
                         data[2, i-2] = 1
                 i += 1
         
+        indexes = np.where(data[2, :] == 1)[0]
+        self.points = data[:, indexes]
+        last_point = self.points.shape[1]-1
+
         self.curves = data
+        self.spinbox1_var.set(0)
+        self.spinbox2_var.set(last_point)
+
+        self.spinbox1.config(to=last_point)
+        self.spinbox2.config(to=last_point)
+
         self.update_plot()
 
     def update_plot(self):
+        if self.file_name == '':
+            print("No chosen file")
+            return
         # Function to update the plot
         self.ax.clear()
         # Example: Generating a simple plot based on the input parameters
         # In a real application, you would use the parameters to calculate data to plot
-        x = np.linspace(0, 10, 100)
-        y = np.sin(x) * float(5)  # Example modification based on current
-        self.ax.plot(self.curves[0, :], self.curves[1, :], linestyle='-', color='b')
-        self.ax.set_title("Updated Plot")
+        value1 = int(self.spinbox1_var.get())
+        value2 = int(self.spinbox2_var.get())
+
+        drow = self.curves
+        print(self.points[:,2])
+        self.ax.plot(drow[0,:], drow[1,:], linestyle='-', color='b')
+        self.ax.scatter(self.points[0, :], self.points[1, :], marker='o', color='r')
+
+        self.ax.axvline(self.points[0,value1], color='g', linestyle='--', linewidth=2)
+        self.ax.axvline(self.points[0,value2], color='y', linestyle='--', linewidth=2)
+
+        self.ax.set_title(self.file_name)
         self.ax.legend()
         self.canvas.draw()
 
@@ -141,13 +168,48 @@ class App:
             crit = L**2/D
             print(i+1, ' ;', max1[1, i], ' ;', ir_hop2[1, i], ' ;',
                 min3[1, i], ' ;', dEt, ' ;', dEs, ' ;', D, ' ;', crit, ';')
+            
+        # Create a new top-level window
+        new_window = tk.Toplevel(self.root)
+        new_window.title(self.file_name)
+
+        # Add a Matplotlib graph to the new window
+        fig, ax = plt.subplots()
+        x = np.linspace(0, 10, 100)
+        y = np.sin(x)
+        ax.plot(x, y)
+        ax.set_title("Sine Wave")
+
+        canvas = FigureCanvasTkAgg(fig, master=new_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(pady=20)
+
+        # Add a table to the new window
+        columns = ("Name", "Age", "City")
+        tree = ttk.Treeview(new_window, columns=columns, show="headings")
+        tree.heading("Name", text="Name")
+        tree.heading("Age", text="Age")
+        tree.heading("City", text="City")
+
+        # Sample data for the table
+        data = [
+            ("Alice", 30, "New York"),
+            ("Bob", 25, "San Francisco"),
+            ("Charlie", 35, "Boston")
+        ]
+
+        for row in data:
+            tree.insert("", tk.END, values=row)
+
+        tree.pack(pady=20)
+
+        # Close button for the new window
+        close_button = tk.Button(new_window, text="Close", command=new_window.destroy)
+        close_button.pack(pady=10)
 
 
     def spinbox_changed(self):
-        # Function to handle spinbox value changes
-        value1 = self.spinbox1_var.get()
-        value2 = self.spinbox2_var.get()
-        print(f"Spinbox 1: {value1}, Spinbox 2: {value2}")
+        self.update_plot()
         # Add code to handle the new values from the spinboxes
 
 
