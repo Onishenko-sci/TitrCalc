@@ -44,7 +44,7 @@ class App:
 
         # Create checkbox for DChrj
         self.dchrj_var = tk.BooleanVar()
-        self.dchrj_checkbox = tk.Checkbutton(self.left_frame, text="DChrj", variable=self.dchrj_var)
+        self.dchrj_checkbox = tk.Checkbutton(self.left_frame, text="Разряд", variable=self.dchrj_var)
         self.dchrj_checkbox.grid(row=5, column=0, pady=5, padx=5)
 
         # Create entries for additional parameters
@@ -52,16 +52,7 @@ class App:
         self.layer_thickness_label.grid(row=6, column=0, pady=5, padx=5)
         self.layer_thickness_entry = tk.Entry(self.left_frame)
         self.layer_thickness_entry.grid(row=7, column=0, pady=5, padx=5)
-
-        self.current_label = tk.Label(self.left_frame, text="Сила тока:")
-        self.current_label.grid(row=8, column=0, pady=5, padx=5)
-        self.current_entry = tk.Entry(self.left_frame)
-        self.current_entry.grid(row=9, column=0, pady=5, padx=5)
-
-        self.time_step_label = tk.Label(self.left_frame, text="Время шага:")
-        self.time_step_label.grid(row=10, column=0, pady=5, padx=5)
-        self.time_step_entry = tk.Entry(self.left_frame)
-        self.time_step_entry.grid(row=11, column=0, pady=5, padx=5)
+        self.layer_thickness_entry.insert(0, "0.054")
 
         # Create a button for calculation
         self.calculate_button = tk.Button(self.left_frame, text="Расчет", command=self.calculate)
@@ -149,7 +140,10 @@ class App:
 
     def calculate(self):
         data = self.curves
-        L = 0.054
+        self.L =float(self.layer_thickness_entry.get())
+
+        value1 = int(self.spinbox1_var.get())
+        value2 = int(self.spinbox2_var.get())
 
         indexes = np.where(data[2, :] == 1)[0]
 
@@ -159,53 +153,78 @@ class App:
         min3 = points[:, 1::2]
         ir_hop2 = ir_hop[:, ::2]
         ir_hop0 = ir_hop[:, 1::2]
-        print(f'L=;{L};')
-        print('n;1;2;3;dEt;dEs;D;Critical factor (>>t_step);')
+        print(f'L=;{self.L};')
+        print('n;0;1;2;3;dEt;dEs;D;Critical factor (>>t_step);')
+        diff_data = []
         for i in range(max1.shape[1]-1):
-            dEs = max1[1, i]-max1[1, i+1]
-            dEt = ir_hop2[1, i]-min3[1, i]
-            D = (4*L**2)/(np.pi*3600)*(dEs/dEt)**2
-            crit = L**2/D
-            print(i+1, ' ;', max1[1, i], ' ;', ir_hop2[1, i], ' ;',
+            if self.dchrj_var.get():
+                dEs = max1[1, i]-max1[1, i+1]
+                dEt = ir_hop2[1, i]-min3[1, i]
+            else:
+                dEs = min3[1, i+1]-min3[1, i]
+                dEt = max1[1, i]-ir_hop0[1, i]
+
+            D = (4*self.L**2)/(np.pi*3600)*(dEs/dEt)**2
+            crit = self.L**2/D
+            diff_data.append([i+1, ir_hop0[1, i], max1[1, i], ir_hop2[1, i], min3[1, i], dEt, dEs, D, crit])
+            print(i+1, ' ;', ir_hop0[1, i], ';', max1[1, i], ' ;', ir_hop2[1, i], ' ;',
                 min3[1, i], ' ;', dEt, ' ;', dEs, ' ;', D, ' ;', crit, ';')
-            
+        
+        diff_data = np.array(diff_data)
+
         # Create a new top-level window
         new_window = tk.Toplevel(self.root)
         new_window.title(self.file_name)
 
+        # Add a table to the new window
+        columns = ("N", "0", "1", "2", "3", "dEt", "dEs", "D", "Critical factor")
+        tree = ttk.Treeview(new_window, columns=columns, show="headings")
+        tree.heading("N", text="N")
+        tree.heading("0", text="0")
+        tree.heading("1", text="1")
+        tree.heading("2", text="2")
+        tree.heading("3", text="3")
+        tree.heading("dEt", text="dEt")
+        tree.heading("dEs", text="dEs")
+        tree.heading("D", text="D")
+        tree.heading("Critical factor", text="Critical factor")
+
+        for row in diff_data:
+            formatted_row = [int(row[0])] + ["{:.4f}".format(value) if isinstance(value, float) else value for value in row[1:7]] + ["{:.7g}".format(row[7]), "{:.7g}".format(row[8])]
+            tree.insert("", tk.END, values=formatted_row)
+
+        tree.pack(pady=10)
+
         # Add a Matplotlib graph to the new window
         fig, ax = plt.subplots()
-        x = np.linspace(0, 10, 100)
-        y = np.sin(x)
-        ax.plot(x, y)
-        ax.set_title("Sine Wave")
+        ax.plot(diff_data[:,0], diff_data[:,7], linestyle='' , marker='o', color='r')
+        ax.set_title(self.file_name)
 
         canvas = FigureCanvasTkAgg(fig, master=new_window)
         canvas.draw()
         canvas.get_tk_widget().pack(pady=20)
 
-        # Add a table to the new window
-        columns = ("Name", "Age", "City")
-        tree = ttk.Treeview(new_window, columns=columns, show="headings")
-        tree.heading("Name", text="Name")
-        tree.heading("Age", text="Age")
-        tree.heading("City", text="City")
-
-        # Sample data for the table
-        data = [
-            ("Alice", 30, "New York"),
-            ("Bob", 25, "San Francisco"),
-            ("Charlie", 35, "Boston")
-        ]
-
-        for row in data:
-            tree.insert("", tk.END, values=row)
-
-        tree.pack(pady=20)
-
         # Close button for the new window
         close_button = tk.Button(new_window, text="Close", command=new_window.destroy)
         close_button.pack(pady=10)
+
+        close_button = tk.Button(new_window, text="Save in CSV", command=self.save_to_csv)
+        close_button.pack(pady=10)
+
+    def save_to_csv(self):
+        # Открываем диалоговое окно для выбора места сохранения файла
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+        
+        if file_path:
+            # Сохраняем данные в CSV файл
+            with open(file_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                # Записываем заголовок
+                writer.writerow(["L = " + str(self.L)])
+                writer.writerow(["N", "0", "1", "2", "3", "dEt", "dEs", "D", "Critical factor"])
+                # Записываем данные
+                for row in self.output_array:
+                    writer.writerow(row)
 
 
     def spinbox_changed(self):
